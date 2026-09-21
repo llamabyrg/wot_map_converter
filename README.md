@@ -9,7 +9,7 @@ default, but it works on any Mudlet JSON export.
 
 * One file, `mudlet2cmud.py`, Python 3 standard library only.
 * Builds the `.dbm` from scratch; no existing CMUD map is needed as a template.
-* `WoTMUD_map_graycolors.dbm` in this repo is a ready-made conversion of the
+* `wotmud.dbm` in this repo is a ready-made conversion of the
   WoTMUD map (see [the command that built it](#the-map-in-this-repo)).
 
 ## Quick start
@@ -100,10 +100,10 @@ exit lines, and area-level `userData`.
 
 ## The map in this repo
 
-`WoTMUD_map_graycolors.dbm` was built with:
+`wotmud.dbm` was built with:
 
 ```sh
-python3 mudlet2cmud.py --mark-zones --boundary-color ff6600 -f -o WoTMUD_map_graycolors.dbm \
+python3 mudlet2cmud.py --mark-zones --boundary-color ff6600 -f -o wotmud.dbm \
   --env-color 20=696969 --env-color 22=d2b48c --env-color 30=ffa500
 ```
 

@@ -7,5 +7,5 @@ __pycache__/
 
 # generated maps: only the published conversion is tracked
 *.dbm
-!WoTMUD_map_graycolors.dbm
+!wotmud.dbm
 *.dbm-journal
