@@ -23,7 +23,7 @@ import sys
 import urllib.parse
 import urllib.request
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import reduce
 from math import gcd
 
@@ -205,7 +205,9 @@ def convert(data, out_path, mode="area", zone_key="zone", scale=None, zstep=None
     areas = data["areas"]
     scale = scale or detect_scale(areas)
     zstep = zstep or detect_zstep(areas)
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # SOURCE_DATE_EPOCH pins the "Modified" stamps so the same input gives the same file
+    epoch = os.environ.get("SOURCE_DATE_EPOCH")
+    now = (datetime.fromtimestamp(int(epoch), timezone.utc) if epoch else datetime.now()).strftime("%Y-%m-%d %H:%M:%S")
     stats = Counter()
 
     env_colors = {i + 1: bgr(c) for i, c in enumerate(ANSI)}

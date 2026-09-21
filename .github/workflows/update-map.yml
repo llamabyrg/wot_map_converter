@@ -1,0 +1,117 @@
+name: Update map
+
+# Rebuilds wotmud.dbm whenever WoTMUD_map.json changes in the source repo.
+# GitHub cannot notify us about pushes to someone else's repository, so this
+# polls: it compares the latest source commit that touched the map with the
+# one recorded in source_commit.txt.
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Rebuild even if the source map has not changed
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-map
+  cancel-in-progress: false
+
+env:
+  SOURCE_REPO: weisluke/WoTMUD
+  SOURCE_PATH: WoTMUD_map.json
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find the latest source commit for the map
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          read -r sha date < <(gh api "repos/$SOURCE_REPO/commits?path=$SOURCE_PATH&per_page=1" \
+            --jq '.[0] | "\(.sha) \(.commit.committer.date)"')
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "unexpected API answer: $sha $date"; exit 1; }
+          built=$(cat source_commit.txt 2>/dev/null || true)
+          echo "source: $sha ($date)"
+          echo "built:  ${built:-none}"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "date=$date" >> "$GITHUB_OUTPUT"
+          if [[ "$sha" != "$built" || "$FORCE" == "true" ]]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Map is up to date with $SOURCE_REPO@${sha:0:7} ($date)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Convert the map
+        if: steps.source.outputs.build == 'true'
+        env:
+          SHA: ${{ steps.source.outputs.sha }}
+          DATE: ${{ steps.source.outputs.date }}
+        run: |
+          # same options as the published map; keep in sync with the README
+          export SOURCE_DATE_EPOCH=$(date -u -d "$DATE" +%s)
+          python3 mudlet2cmud.py "https://raw.githubusercontent.com/$SOURCE_REPO/$SHA/$SOURCE_PATH" \
+            --mark-zones --boundary-color ff6600 -f -o wotmud.dbm \
+            --env-color 20=696969 --env-color 22=d2b48c --env-color 30=ffa500 | tee build.log
+
+      - name: Check the result
+        if: steps.source.outputs.build == 'true'
+        run: |
+          python3 - <<'PY'
+          import sqlite3, sys
+          db = sqlite3.connect("wotmud.dbm")
+          one = lambda sql: db.execute(sql).fetchone()[0]
+          problems = []
+          if one("PRAGMA integrity_check") != "ok":
+              problems.append("integrity check failed")
+          if one("SELECT count(*) FROM ObjectTbl") < 1000:
+              problems.append("suspiciously few rooms")
+          if one("SELECT count(*) FROM ExitTbl e JOIN ExitTbl f ON f.ExitID = e.ExitIDTo "
+                 "WHERE f.ExitIDTo <> e.ExitID OR f.FromID <> e.ToID OR f.ToID <> e.FromID"):
+              problems.append("exit pairs are inconsistent")
+          if one("SELECT count(*) FROM ExitTbl WHERE ToID NOT IN (SELECT ObjID FROM ObjectTbl)"):
+              problems.append("exits lead to missing rooms")
+          print("rooms", one("SELECT count(*) FROM ObjectTbl"), "exits", one("SELECT count(*) FROM ExitTbl"),
+                "zones", one("SELECT count(*) FROM ZoneTbl"))
+          sys.exit("; ".join(problems) if problems else 0)
+          PY
+
+      - name: Commit and push
+        if: steps.source.outputs.build == 'true'
+        env:
+          SHA: ${{ steps.source.outputs.sha }}
+          DATE: ${{ steps.source.outputs.date }}
+        run: |
+          echo "$SHA" > source_commit.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add wotmud.dbm source_commit.txt
+          if git diff --cached --quiet; then
+            echo "Rebuilt from $SOURCE_REPO@${SHA:0:7}; the result is identical, nothing to commit." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "Update wotmud.dbm from $SOURCE_REPO@${SHA:0:7}"
+            echo
+            echo "Source: https://github.com/$SOURCE_REPO/commit/$SHA ($DATE)"
+            echo
+            tail -n +2 build.log
+          } > message.txt
+          git commit -q -F message.txt
+          git push
+          {
+            echo "Updated wotmud.dbm from $SOURCE_REPO@${SHA:0:7} ($DATE)."
+            echo '```'
+            cat build.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

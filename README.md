@@ -112,6 +112,34 @@ boundaries, and three terrain colours set back to the ones from an older
 revision of the map (dark gray indoor rooms, tan roads, orange instead of gold).
 Re-run the same command to refresh it when the source map changes.
 
+## Automatic updates
+
+`wotmud.dbm` is kept current by a GitHub Actions workflow,
+[`.github/workflows/update-map.yml`](.github/workflows/update-map.yml):
+
+* Every six hours it asks GitHub for the latest commit that touched
+  `WoTMUD_map.json` in [weisluke/WoTMUD](https://github.com/weisluke/WoTMUD) and
+  compares it with the one recorded in `source_commit.txt`. (GitHub cannot
+  notify a repository about pushes to someone else's, so it has to poll.)
+* If the map changed, it converts that exact source commit with the command
+  above, checks the result (SQLite integrity, exit pairs, no dangling exits),
+  and commits the new `wotmud.dbm` and `source_commit.txt`. If the check fails
+  nothing is committed and the run shows as failed.
+* It can also be started by hand from the *Actions* tab (*Update map > Run
+  workflow*), optionally with *force* to rebuild even when nothing changed.
+
+Builds are reproducible: when `SOURCE_DATE_EPOCH` is set, the script uses it for
+the "modified" stamps it writes instead of the current time, and the workflow
+sets it to the source commit's date. Rebuilding the same source therefore gives
+the same file, and a source change that does not affect the map produces no
+new commit of the 20 MB database.
+
+To change how the published map is built, edit the command in the workflow (and
+the copy above), then run it once with *force*.
+
+GitHub pauses scheduled workflows in repositories with no activity for 60 days;
+if that happens, re-enable it from the *Actions* tab.
+
 ## Notes on the CMUD map format
 
 A `.dbm` is a plain SQLite 3 database. Nothing about it is documented, so this
