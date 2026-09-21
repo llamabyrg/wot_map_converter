@@ -1,0 +1,11 @@
+# scratch scripts and experiments
+test/
+
+# Python
+__pycache__/
+*.pyc
+
+# generated maps: only the published conversion is tracked
+*.dbm
+!WoTMUD_map_graycolors.dbm
+*.dbm-journal
